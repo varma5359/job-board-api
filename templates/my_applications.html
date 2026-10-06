@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+{% block title %}My Applications{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="fw-bold">📄 My Applications</h2>
+    <a href="/jobs/" class="btn btn-sm btn-outline-dark">← Browse Jobs</a>
+</div>
+
+<!-- Loading -->
+<div id="loading" class="text-center py-5">
+    <div class="spinner-border text-dark" role="status"></div>
+    <p class="text-muted small mt-2">Loading your applications...</p>
+</div>
+
+<!-- Empty state -->
+<div id="empty" class="text-center py-5" style="display:none;">
+    <h1 class="display-6">📭</h1>
+    <p class="text-muted">You haven't applied to any jobs yet.</p>
+    <a href="/jobs/" class="btn btn-dark btn-sm">Browse Jobs</a>
+</div>
+
+<!-- Applications list -->
+<div id="apps"></div>
+
+<script>
+const token = localStorage.getItem('access');
+const role = localStorage.getItem('role');
+
+if (!token) {
+    window.location.href = '/login/';
+} else if (role !== 'applicant') {
+    alert('This page is only for applicants.');
+    window.location.href = '/jobs/';
+}
+
+/* ---------------- HELPERS ---------------- */
+function badgeClass(status) {
+    if (status === 'shortlisted') return 'bg-success';
+    if (status === 'rejected') return 'bg-danger';
+    return 'bg-secondary';
+}
+
+function formatDate(iso) {
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-GB', {
+        day: '2-digit', month: 'short', year: 'numeric'
+    });
+}
+
+/* ---------------- LOAD APPLICATIONS ---------------- */
+async function loadApplications() {
+    try {
+        const res = await fetch('/api/my-applications/', {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const data = await res.json();
+
+        document.getElementById('loading').style.display = 'none';
+
+        if (!res.ok) {
+            document.getElementById('apps').innerHTML =
+                `<div class="alert alert-danger">${data.message || 'Failed to load.'}</div>`;
+            return;
+        }
+
+        if (data.data.length === 0) {
+            document.getElementById('empty').style.display = 'block';
+            return;
+        }
+
+        document.getElementById('apps').innerHTML = data.data.map(app => `
+            <div class="card shadow-sm border-0 rounded-4 mb-3">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-grow-1">
+                            <h5 class="fw-bold mb-1">${app.job_title}</h5>
+                            <p class="text-muted small mb-2">
+                                🏢 ${app.job_company}
+                                &nbsp;•&nbsp;
+                                📅 Applied on ${formatDate(app.applied_at)}
+                            </p>
+
+                            <div class="row small text-secondary mb-2">
+                                <div class="col-md-6">👤 ${app.full_name}</div>
+                                <div class="col-md-6">📧 ${app.email}</div>
+                                <div class="col-md-6">📞 ${app.phone}</div>
+                                <div class="col-md-6">📍 ${app.location}</div>
+                                <div class="col-md-6">💼 ${app.experience_years} yrs</div>
+                                <div class="col-md-6">🛠️ ${app.skills}</div>
+                            </div>
+
+                            <p class="small mb-0 text-secondary">
+                                <strong>Cover letter:</strong> ${app.cover_letter}
+                            </p>
+
+                            ${app.resume_url
+                                ? `<a href="${app.resume_url}" target="_blank"
+                                      class="btn btn-sm btn-outline-primary mt-2">📄 View My Resume</a>`
+                                : ''}
+                        </div>
+                        <span class="badge ${badgeClass(app.status)} ms-3">
+                            ${app.status.toUpperCase()}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+
+    } catch (err) {
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('apps').innerHTML =
+            `<div class="alert alert-danger">Error: ${err.message}</div>`;
+    }
+}
+
+loadApplications();
+</script>
+
+{% endblock %}

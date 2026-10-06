@@ -1,0 +1,198 @@
+{% extends 'base.html' %}
+{% block title %}Recruiter Dashboard{% endblock %}
+
+{% block content %}
+<h2 class="fw-bold mb-4">🧑‍💼 Recruiter Dashboard</h2>
+
+<div class="row g-4">
+    <!-- =============== POST JOB =============== -->
+    <div class="col-md-5">
+        <div class="card shadow-sm border-0 rounded-4">
+            <div class="card-body p-4">
+                <h5 class="fw-bold mb-3">Post a New Job</h5>
+
+                <input id="title" class="form-control mb-2" placeholder="Job Title">
+                <input id="company" class="form-control mb-2" placeholder="Company">
+                <input id="location" class="form-control mb-2" placeholder="Location">
+                <input id="salary" class="form-control mb-2" placeholder="Salary (optional)">
+                <textarea id="description" class="form-control mb-2" rows="3"
+                          placeholder="Description"></textarea>
+
+                <button onclick="postJob()" class="btn btn-warning w-100">Post Job</button>
+                <p id="postMsg" class="small mt-2"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- =============== MY JOBS =============== -->
+    <div class="col-md-7">
+        <h5 class="fw-bold mb-3">My Posted Jobs</h5>
+        <div id="myJobs"></div>
+    </div>
+</div>
+
+<script>
+const token = localStorage.getItem('access');
+const role = localStorage.getItem('role');
+const username = localStorage.getItem('username');
+
+if (!token) { window.location.href = '/login/'; }
+if (role !== 'recruiter') { alert('Recruiters only.'); window.location.href = '/jobs/'; }
+
+/* ---------------- POST JOB ---------------- */
+async function postJob() {
+    const body = {
+        title: document.getElementById('title').value,
+        company: document.getElementById('company').value,
+        location: document.getElementById('location').value,
+        salary: document.getElementById('salary').value,
+        description: document.getElementById('description').value,
+    };
+
+    const res = await fetch('/api/jobs/create/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token,
+        },
+        body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    const msg = document.getElementById('postMsg');
+
+    if (res.ok) {
+        msg.innerHTML = '<span class="text-success">Job posted!</span>';
+        document.getElementById('title').value = '';
+        document.getElementById('company').value = '';
+        document.getElementById('location').value = '';
+        document.getElementById('salary').value = '';
+        document.getElementById('description').value = '';
+        loadMyJobs();
+    } else {
+        msg.innerHTML = '<span class="text-danger">' + data.message + '</span>';
+    }
+}
+
+/* ---------------- LOAD MY JOBS ---------------- */
+async function loadMyJobs() {
+    const res = await fetch('/api/jobs/');
+    const data = await res.json();
+
+    const mine = data.data.filter(j => j.recruiter_username === username);
+    const container = document.getElementById('myJobs');
+
+    if (mine.length === 0) {
+        container.innerHTML = '<p class="text-muted">You have not posted any jobs yet.</p>';
+        return;
+    }
+
+    container.innerHTML = mine.map(job => `
+        <div class="card shadow-sm border-0 rounded-4 mb-3">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="fw-bold mb-1">${job.title}</h6>
+                        <p class="text-muted small mb-1">🏢 ${job.company} • 📍 ${job.location}</p>
+                    </div>
+                    <div>
+                        <button onclick="deleteJob(${job.id})"
+                                class="btn btn-sm btn-outline-danger">Delete</button>
+                        <button onclick="loadApplications(${job.id})"
+                                class="btn btn-sm btn-dark">Applications</button>
+                    </div>
+                </div>
+                <div id="apps-${job.id}" class="mt-3"></div>
+            </div>
+        </div>
+    `).join('');
+}
+
+/* ---------------- DELETE JOB ---------------- */
+async function deleteJob(jobId) {
+    if (!confirm('Delete this job?')) return;
+    const res = await fetch(`/api/jobs/${jobId}/delete/`, {
+        method: 'DELETE',
+        headers: { 'Authorization': 'Bearer ' + token }
+    });
+    const data = await res.json();
+    alert(data.message);
+    loadMyJobs();
+}
+
+/* ---------------- LOAD APPLICATIONS ---------------- */
+async function loadApplications(jobId) {
+    const res = await fetch(`/api/jobs/${jobId}/applications/`, {
+        headers: { 'Authorization': 'Bearer ' + token }
+    });
+    const data = await res.json();
+    const box = document.getElementById(`apps-${jobId}`);
+
+    if (!res.ok) {
+        box.innerHTML = `<p class="text-danger small">${data.message}</p>`;
+        return;
+    }
+    if (data.data.length === 0) {
+        box.innerHTML = '<p class="text-muted small">No applications yet.</p>';
+        return;
+    }
+
+    box.innerHTML = '<hr>' + data.data.map(app => `
+        <div class="border rounded-3 p-3 mb-2 bg-light">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <strong>${app.full_name}</strong>
+                    <span class="badge ms-2 ${badgeClass(app.status)}">${app.status}</span>
+                </div>
+                <div>
+                    <button onclick="setStatus(${app.id}, 'shortlisted', ${jobId})"
+                            class="btn btn-sm btn-success me-1">Shortlist</button>
+                    <button onclick="setStatus(${app.id}, 'rejected', ${jobId})"
+                            class="btn btn-sm btn-danger">Reject</button>
+                </div>
+            </div>
+
+            <div class="row small mt-2">
+                <div class="col-md-6">📧 ${app.email}</div>
+                <div class="col-md-6">📞 ${app.phone}</div>
+                <div class="col-md-6">📍 ${app.location}</div>
+                <div class="col-md-6">💼 ${app.experience_years} yrs experience</div>
+                <div class="col-12 mt-1">🛠️ <strong>Skills:</strong> ${app.skills}</div>
+            </div>
+
+            <p class="small mt-2 mb-2 text-muted">
+                <strong>Cover letter:</strong> ${app.cover_letter}
+            </p>
+
+            ${app.resume_url
+                ? `<a href="${app.resume_url}" target="_blank"
+                      class="btn btn-sm btn-outline-primary">📄 Download Resume</a>`
+                : `<span class="small text-muted">No resume uploaded</span>`}
+        </div>
+    `).join('');
+}
+
+/* ---------------- HELPERS ---------------- */
+function badgeClass(status) {
+    if (status === 'shortlisted') return 'bg-success';
+    if (status === 'rejected') return 'bg-danger';
+    return 'bg-secondary';
+}
+
+/* ---------------- UPDATE STATUS ---------------- */
+async function setStatus(appId, status, jobId) {
+    const res = await fetch(`/api/applications/${appId}/status/`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token,
+        },
+        body: JSON.stringify({ status })
+    });
+    const data = await res.json();
+    alert(data.message);
+    loadApplications(jobId);
+}
+
+loadMyJobs();
+</script>
+{% endblock %}
